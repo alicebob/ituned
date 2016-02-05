@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"fmt"
 	"net"
 
 	"github.com/alicebob/alac"
