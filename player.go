@@ -5,6 +5,9 @@ import (
 	"crypto/cipher"
 	"fmt"
 	"net"
+
+	"github.com/alicebob/alac"
+	"github.com/mesilliac/pulse-simple"
 )
 
 func writeUdp(aesiv, aeskey []byte, fmtp []int) {
@@ -18,8 +21,18 @@ func writeUdp(aesiv, aeskey []byte, fmtp []int) {
 	}
 	// Never closes zomg
 
+	dec, err := alac.New()
+	if err != nil {
+		panic(err)
+	}
+
 	// packetchan := make(chan []byte, 1000)
 	// go CreateALACPlayer(fmtp, packetchan)
+
+	ss := pulse.SampleSpec{pulse.SAMPLE_S16LE, 44100, 2}
+	stream, _ := pulse.Playback("ituned", "my stream", &ss)
+	defer stream.Free()
+	defer stream.Drain()
 
 	buf := make([]byte, 1024*16)
 	for {
@@ -40,9 +53,11 @@ func writeUdp(aesiv, aeskey []byte, fmtp []int) {
 			todec = todec[aes.BlockSize:]
 		}
 
-		fmt.Printf("audio packet %d\n", len(audio))
+		decoded := dec.Decode(audio)
+		// fmt.Printf("audio packet %d->%d\n", len(audio), len(decoded))
 		// send := make([]byte, len(audio))
 		// copy(send, audio)
 		// packetchan <- send
+		stream.Write(decoded)
 	}
 }

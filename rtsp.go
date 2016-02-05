@@ -115,6 +115,7 @@ func handleSession(id string, conn net.Conn) {
 			resp.headers["Public"] = strings.Join(methods, " ")
 
 		case "ANNOUNCE":
+			fmt.Printf("ANNOUNCE:\n%s\n", string(req.body))
 			// Pull all of the a=xxx:yyyyy tags from the body
 			atags := make(map[string]string)
 			for _, line := range strings.Split(string(req.body), "\r\n") {

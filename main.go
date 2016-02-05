@@ -25,6 +25,7 @@ var (
 		"tp=UDP",
 		"sm=false",
 		"ek=1",
+		// "cn=0", // 0=PCM, 1=ALAC
 		"cn=0,1",
 		"ch=2",
 		"ss=16",
