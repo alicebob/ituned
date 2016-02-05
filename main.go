@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
 
 	"github.com/oleksandr/bonjour"
@@ -36,24 +37,42 @@ var (
 func main() {
 	fmt.Println("hello")
 
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+	go func() {
+		i := 1
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				fmt.Println(err.Error())
+				os.Exit(1) // TODO
+			}
+			fmt.Printf("incoming connection from %s\n", conn.RemoteAddr())
+			go handleSession(strconv.Itoa(i), conn)
+			i++
+		}
+	}()
+
 	iface, err := net.InterfaceByName(iface)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-
 	bName := hex.EncodeToString(iface.HardwareAddr) + "@" + name
 	s, err := bonjour.Register(bName, "_raop._tcp", "", port, txt, nil)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
+	defer s.Shutdown()
 
 	handler := make(chan os.Signal, 1)
 	signal.Notify(handler, os.Interrupt)
 	for sig := range handler {
 		if sig == os.Interrupt {
-			s.Shutdown()
 			time.Sleep(100 * time.Millisecond)
 			break
 		}
