@@ -170,17 +170,36 @@ func handleSession(id string, conn net.Conn) {
 			}
 
 		case "SETUP":
-			resp.headers["Transport"] = "RTP/AVP/UDP;unicast;interleaved=0-1;mode=record;"
-			resp.headers["Transport"] += "server_port=6000;control_port=6001;timing_port=6002"
-			resp.headers["Session"] = "1" // This is necessary (why?)
+			// start a listener on a UDP port, just for this connection
+			udpaddr, err := net.ResolveUDPAddr("udp", ":0") // any free port
+			if err != nil {
+				panic(err)
+			}
+			udpconn, err := net.ListenUDP("udp", udpaddr)
+			if err != nil {
+				panic(err)
+			}
+			port := udpconn.LocalAddr().(*net.UDPAddr).Port
+			fmt.Printf("stream to :%d\n", port)
+			defer func() {
+				fmt.Printf("stop listening on port %d\n", port)
+				udpconn.Close()
+			}()
+			go handleStream(udpconn, aesiv, aeskey, fmtp)
+			// TODO: control_port and timing_port
+			resp.headers["Transport"] = fmt.Sprintf("RTP/AVP/UDP;unicast;interleaved=0-1;mode=record;server_port=%d;control_port=6001;timing_port=6002", port)
+			resp.headers["Session"] = id
+
 		case "RECORD":
 			resp.headers["Audio-Latency"] = "2205"
-			go writeUdp(aesiv, aeskey, fmtp)
+
 		case "TEARDOWN":
-			resp.headers["Session"] = "1" // Is _this_ necessary?
+			resp.headers["Session"] = id
+
 		case "FLUSH":
-			// There is a header like "RTP-Info: seq=25639;rtptime=4037478127". We can probably
-			// flush the RTP packets up to there. Try to extract that number.
+			// There is a header like "RTP-Info: seq=25639;rtptime=4037478127".
+			// We can probably flush the RTP packets up to there. Try to
+			// extract that number.
 
 			/*
 				seq := -1
@@ -198,18 +217,19 @@ func handleSession(id string, conn net.Conn) {
 
 		case "SET_PARAMETER":
 			// Volume? Message player.
+			fmt.Printf("SET_PARAMETER:\n%s\n", string(req.body))
+
 		default:
 			// No-op
+			fmt.Printf("unhandled %q:\n%q\n", req.method, string(req.body))
 		}
 
 		// TODO: Handle errors here?
 		response := resp.Render()
-		_, err = conn.Write(response)
-		if err != nil {
+		if _, err = conn.Write(response); err != nil {
 			log.Println(id, "-", "Error while writing response:", err)
 			return
 		}
-		// Debug.Print("To client:\n", string(response))
 	}
 }
 

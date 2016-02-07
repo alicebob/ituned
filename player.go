@@ -9,54 +9,39 @@ import (
 	"github.com/mesilliac/pulse-simple"
 )
 
-func writeUdp(aesiv, aeskey []byte, fmtp []int) {
-	udpaddr, err := net.ResolveUDPAddr("udp", ":6000")
-	if err != nil {
-		panic(err)
-	}
-	udpconn, err := net.ListenUDP("udp", udpaddr)
-	if err != nil {
-		panic(err)
-	}
-	// Never closes zomg
-
+func handleStream(conn *net.UDPConn, aesiv, aeskey []byte, fmtp []int) {
 	dec, err := alac.New()
 	if err != nil {
 		panic(err)
 	}
 
-	// packetchan := make(chan []byte, 1000)
-	// go CreateALACPlayer(fmtp, packetchan)
-
 	ss := pulse.SampleSpec{pulse.SAMPLE_S16LE, 44100, 2}
-	stream, _ := pulse.Playback("ituned", "my stream", &ss)
+	stream, err := pulse.Playback("ituned", "my stream", &ss)
+	if err != nil {
+		panic(err)
+	}
 	defer stream.Free()
 	defer stream.Drain()
 
+	block, err := aes.NewCipher(aeskey)
+	if err != nil {
+		panic(err)
+	}
+
 	buf := make([]byte, 1024*16)
 	for {
-		n, _, err := udpconn.ReadFromUDP(buf)
+		n, _, err := conn.ReadFromUDP(buf)
 		if err != nil {
-			panic(err)
+			break
 		}
-		packet := buf[:n]
-		audio := packet[12:]
-		todec := audio
-		block, err := aes.NewCipher(aeskey)
-		if err != nil {
-			panic(err)
-		}
+		audio := buf[12:n]
 		AESDec := cipher.NewCBCDecrypter(block, aesiv)
-		for len(todec) >= aes.BlockSize {
-			AESDec.CryptBlocks(todec[:aes.BlockSize], todec[:aes.BlockSize])
-			todec = todec[aes.BlockSize:]
-		}
+		// for some reason todec isn't always a multiple of aes.BlockSize.
+		rounded := aes.BlockSize * (len(audio) / aes.BlockSize)
+		AESDec.CryptBlocks(audio[:rounded], audio[:rounded])
 
+		// fmt.Printf("encoded\n%x\n", audio)
 		decoded := dec.Decode(audio)
-		// fmt.Printf("audio packet %d->%d\n", len(audio), len(decoded))
-		// send := make([]byte, len(audio))
-		// copy(send, audio)
-		// packetchan <- send
 		stream.Write(decoded)
 	}
 }
